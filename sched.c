@@ -41,6 +41,7 @@ int main(int argc, char *argv[])
     int msgid2 = atoi(argv[2]);
     int k = atoi(argv[3]);
 
+    //doubt
     key_t key = ftok("master.c", 4);
     int semid = semget(key, 1, IPC_CREAT | 0666);
 

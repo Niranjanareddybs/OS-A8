@@ -20,7 +20,7 @@ typedef struct SM1
     int mi;          // number of required pages
     int fi;          // number of frames allocated
     // int **pagetable; // page table
-    int pagetable[10][3];
+    int pagetable[100][3];
     int totalpagefaults;
     int totalillegalaccess;
 } SM1;
@@ -82,10 +82,10 @@ int main(int argc, char *argv[])
 
         int page = msg3.pageorframe;
 
-        printf("page -> %d\n",page);
-        printf("1-> %d\n",sm1[i].pagetable[page][0]);
-        printf("2-> %d\n",sm1[i].pagetable[page][1]);
-        printf("3-> %d\n",sm1[i].mi);
+        // printf("page -> %d\n",page);
+        // printf("1-> %d\n",sm1[i].pagetable[page][0]);
+        // printf("2-> %d\n",sm1[i].pagetable[page][1]);
+        // printf("3-> %d\n",sm1[i].mi);
         // printf("4->\n");
         
         if (page == -9)
@@ -168,6 +168,7 @@ int main(int argc, char *argv[])
                     sm2[j] = 0;
                     break;
                 }
+                j++;
             }
 
             if (sm2[j] == -1)

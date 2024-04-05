@@ -22,7 +22,7 @@ typedef struct SM1
     int pid;              // process id
     int mi;               // number of required pages
     int fi;               // number of frames allocated
-    int pagetable[10][3]; // page table
+    int pagetable[100][3]; // page table
     int totalpagefaults;
     int totalillegalaccess;
 } SM1;
@@ -113,10 +113,11 @@ int main()
     sm2 = (int *)shmat(shmid2, NULL, 0);
 
     // initialize the frames, 1 means free, 0 means occupied, -1 means end of list
+    //doubt
     for (int i = 0; i < f; i++)
     {
         sm2[i] = 1;
-        printf("CHECK\n");
+        // printf("CHECK\n");
     }
     sm2[f] = -1;
 
@@ -177,7 +178,7 @@ int main()
     char strk[10];
     sprintf(strk, "%d", k);
 
-    printf("CHECK 11\n");
+    // printf("CHECK 11\n");
     // create Scheduler process, pass msgid1str and msgid2str
     pidscheduler = fork();
     if (pidscheduler == 0)
@@ -195,10 +196,12 @@ int main()
         execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
     }
 
-    int **refi = (int **)malloc((k) * sizeof(int *));
-    char **refstr = (char **)malloc((k) * sizeof(char *));
+    // int **refi = (int **)malloc((k) * sizeof(int *));
+    // char **refstr = (char **)malloc((k) * sizeof(char *));
+    int refi[100][602];
+    char refstr[100][602];
 
-    printf("CHECK 12\n");
+    // printf("CHECK 12\n");
     // initialize the Processes
     for (int i = 0; i < k; i++)
     {
@@ -216,7 +219,7 @@ int main()
         int x = rand() % (8 * sm1[i].mi + 1) + 2 * sm1[i].mi;
 
 
-        refi[i] = (int *)malloc(x * sizeof(int));
+        // refi[i] = (int *)malloc(x * sizeof(int));
         for (int j = 0; j < x; j++)
         {
             refi[i][j] = rand() % sm1[i].mi;
@@ -239,8 +242,11 @@ int main()
             }
         }
 
-        refstr[i] = (char *)malloc(y * sizeof(char));
+        // refstr[i] = (char *)malloc(y * sizeof(char));
         memset(refstr[i], '\0', y);
+        // for(int i=0;i<y;i++){
+        //     refstr[i]='\0';
+        // }
 
         for (int j = 0; j < x; j++)
         {
@@ -251,7 +257,7 @@ int main()
     }
 
     sleep(1);
-    printf("CHECK 13\n");
+    // printf("CHECK 13\n");
     // create Processes
     for (int i = 0; i < k; i++)
     {
@@ -268,7 +274,7 @@ int main()
             execlp("./process", "./process", refstr[i], msgid1str, msgid3str, NULL);
         }
     }
-    printf("CHECK 14\n");
+    // printf("CHECK 14\n");
 
     // wait for Scheduler to signal
     P(semid4);

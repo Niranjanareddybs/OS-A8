@@ -43,8 +43,8 @@ int main(int argc, char *argv[])
     int msgid1 = atoi(argv[2]);
     int msgid3 = atoi(argv[3]);
 
-    char *refstr;
-    refstr = (char *)malloc(100 * sizeof(char));
+    char refstr[600];
+    // refstr = (char *)malloc(100 * sizeof(char));
     strcpy(refstr, argv[1]);
 
     printf("Process has started with %s\n",refstr);
@@ -63,11 +63,12 @@ int main(int argc, char *argv[])
 
     // wait till scheduler signals to start
     P(semid);
+    printf("going in after 1st inside %d",pid);
     // send the reference string to the scheduler, one character at a time
     int i = 0;
     while (refstr[i] != '\0')
     {
-        sleep(1);
+        // sleep(1);//doubt
         // printf("\033[1;35");
         printf("\n\n\nProcess %d: ", pid);
         printf("ENTERING WHILE LOOP\n");
