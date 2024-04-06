@@ -1,16 +1,16 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/msg.h>
-#include <sys/sem.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <string.h>
+#include <sys/msg.h>
 #include <limits.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/sem.h>
 
 #define PROB 0.1
 
@@ -19,10 +19,10 @@
 
 typedef struct PageTable
 {
-    int pid;              // process id
-    int pages_req;        // number of required pages
-    int frames_alloted;               // number of frames allocated
-    int pagetable[200][3]; // page table
+    int pid;                      // process id
+    int pages_req;                // number of required pages
+    int frames_alloted;           // number of frames allocated
+    int pagetable[200][3];        // page table
     int total_page_faults;
     int total_illegal_access;
 } PageTable;
@@ -182,7 +182,7 @@ int main()
     if (pidmmu == 0)
     {
         printf("Memory Management Unit started\n");
-        // execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+        execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
         // execlp("nohup", "nohup", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
 
         execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
@@ -254,8 +254,8 @@ int main()
     for (int i = 0; i < k; i++)
     {
         // printf("CHECK 113\n");
-        usleep(250000);
-        // sleep(1);
+        // usleep(250000);
+        sleep(1);
         int pid = fork();
         if (pid != 0)
         {
