@@ -30,7 +30,7 @@ struct message_type_2
 
 int main(int argc, char *argv[])
 {
-    char refstr[600];
+    char refstr[1000];
     int i = 0;
     strcpy(refstr, argv[1]);
 

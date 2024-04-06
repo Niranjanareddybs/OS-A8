@@ -182,16 +182,16 @@ int main()
     if (pidmmu == 0)
     {
         printf("Memory Management Unit started\n");
-        execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+        // execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
         // execlp("nohup", "nohup", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
 
-        // execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+        execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
     }
 
     // int **refi = (int **)malloc((k) * sizeof(int *));
     // char **refstr = (char **)malloc((k) * sizeof(char *));
-    int refi[100][602];
-    char refstr[100][602];
+    int refi[100][1000];
+    char refstr[100][1000];
 
     // printf("CHECK 12\n");
     // initialize the Processes
