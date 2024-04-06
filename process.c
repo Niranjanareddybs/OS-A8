@@ -1,132 +1,107 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
+#include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/shm.h>
 
-#define P(s) semop(s, &pop, 1)
-#define V(s) semop(s, &vop, 1)
 
-typedef struct message1
+struct message_type_1
 {
     long type;
     int pid;
-} message1;
+} message_type_1;
 
-typedef struct message3
+struct message_type_2
 {
     long type;
     int pageorframe;
     int pid;
-} message3;
+} message_type_2;
+
+#define Wait(s) semop(s, &waitop, 1)
+#define Signal(s) semop(s, &signalop, 1)
+
 
 int main(int argc, char *argv[])
 {
-    printf("PROCESS CALLED\n");
-
-    struct sembuf pop = {0, -1, 0};
-    struct sembuf vop = {0, 1, 0};
-
-    if (argc != 4)
-    {
-        printf("Usage: %s <Reference String> <Virtual Address Space size> <Physical Address Space size>\n", argv[0]);
-        // exit(1);
-        return 1;
-    }
-
-    int msgid1 = atoi(argv[2]);
-    int msgid3 = atoi(argv[3]);
-
     char refstr[600];
-    // refstr = (char *)malloc(100 * sizeof(char));
+    int i = 0;
     strcpy(refstr, argv[1]);
 
-    printf("Process has started with %s\n",refstr);
+    printf("Process started with Refernce String %s\n",refstr);
 
     key_t key = ftok("master.c", 4);
-    int semid = semget(key, 1, IPC_CREAT | 0666);
+    int psem = semget(key, 1, IPC_CREAT | 0666);
 
     int pid = getpid();
 
-    message1 msg1;
-    msg1.type = 1;
-    msg1.pid = pid;
+    struct message_type_1 message1;
+    message1.pid = pid;
+    message1.type = 1;
 
-    // send pid to ready queue
-    msgsnd(msgid1, (void *)&msg1, sizeof(message1), 0);
 
-    // wait till scheduler signals to start
-    P(semid);
-    printf("going in after 1st inside %d",pid);
-    // send the reference string to the scheduler, one character at a time
-    int i = 0;
+    int msg1_shm = atoi(argv[2]);
+    int msg3_shm = atoi(argv[3]);
+    msgsnd(msg1_shm, (void *)&message1, sizeof(message_type_1), 0);
+
+    struct sembuf waitop = {0, -1, 0};
+    struct sembuf signalop = {0, 1, 0};
+
+    Wait(psem);
     while (refstr[i] != '\0')
     {
-        // sleep(1);//doubt
-        // printf("\033[1;35");
-        printf("\n\n\nProcess %d: ", pid);
-        printf("ENTERING WHILE LOOP\n");
-        // print("\x1b[0m");
-
-        message3 msg3;
-        msg3.type = 1;
-        msg3.pid = pid;
         int j = 0;
-        // extract the page number from the reference string going character by character
+
         while (refstr[i] != '.' && refstr[i] != '\0')
-        {
-            j = j * 10 + (refstr[i] - '0');
+        {   
+            j *=10;
+            j+= (refstr[i] - '0');
             i++;
         }
+
         i++;
-        printf(" j = %d\n", j);
-        msg3.pageorframe = j;
-        msgsnd(msgid3, (void *)&msg3, sizeof(message3), 0);
-        printf("Process has started 8\n");
+        printf("\nPID %d:Page Number retrieved from string = %d\n",pid, j);
 
-        // wait for the mmu to allocate the frame
-        msgrcv(msgid3, (void *)&msg3, sizeof(message3), 0, 0);
-        printf("Process has started 9\n");
-
-        // check the validity of the frame number
-        if (msg3.pageorframe == -2)
+        struct message_type_2 message2;
+        message2.pid = pid;
+        message2.type = 1;
+        message2.pageorframe = j;
+        msgsnd(msg3_shm, (void *)&message2, sizeof(message_type_2), 0);
+        msgrcv(msg3_shm, (void *)&message2, sizeof(message_type_2), 0, 0);
+        
+        if (message2.pageorframe == -1)
         {
-            printf("Process %d: ", pid);
-            printf("Illegal Page Number\nTerminating\n");
-            exit(1);
-        }
-        else if (msg3.pageorframe == -1)
-        {
-            printf("Process %d: ", pid);
-            printf("Page Fault\nWaiting for page to be loaded\n");
-            // wait for the page to be loaded
-            // scheduler will signal when the page is loaded
-            P(semid);
+            printf("PID %d:Page Fault Detected \nPutting Process on wait until page is loaded\n",pid);
+            Wait(psem);
             continue;
+        }
+        else if (message2.pageorframe == -2)
+        {
+            printf("PID %d:Page Illegal detected \nTerminating Process \n\n",pid);
+            exit(1);
         }
         else
         {
-            printf("Process %d: ", pid);
-            printf("Frame %d allocated\n", msg3.pageorframe);
+            printf("PID %d:Frame Allocation done, Frame number alloted: %d\n",pid, message2.pageorframe);
         }
     }
 
-    // send the termination signal to the mmu
-    printf("Process %d: ", pid);
-    printf("Got all frames properly\n");
-    message3 msg3;
-    msg3.type = 1;
-    msg3.pid = pid;
-    msg3.pageorframe = -9;
+    struct message_type_2 message2;
+    message2.type = 1;
+    message2.pageorframe = -9;
+    message2.pid = pid;
 
-    msgsnd(msgid3, (void *)&msg3, sizeof(message3), 0);
-    printf("Terminating\n");
+    printf("PID %d:", pid);
+
+    msgsnd(msg3_shm, (void *)&message2, sizeof(message_type_2), 0);
+    printf("All Frames Received \n");
+    printf("Process Terminating\n\n");
 
     return 0;
 }

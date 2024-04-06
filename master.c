@@ -14,30 +14,30 @@
 
 #define PROB 0.1
 
-#define P(s) semop(s, &pop, 1)
-#define V(s) semop(s, &vop, 1)
+#define Wait(s) semop(s, &waitop, 1)
+#define Signal(s) semop(s, &signalop, 1)
 
-typedef struct SM1
+typedef struct PageTable
 {
     int pid;              // process id
-    int mi;               // number of required pages
-    int fi;               // number of frames allocated
-    int pagetable[100][3]; // page table
-    int totalpagefaults;
-    int totalillegalaccess;
-} SM1;
+    int pages_req;        // number of required pages
+    int frames_alloted;               // number of frames allocated
+    int pagetable[200][3]; // page table
+    int total_page_faults;
+    int total_illegal_access;
+} PageTable;
 
 int pidscheduler;
 int pidmmu;
 char msgid1str[10], msgid2str[10], msgid3str[10];
 char shmid1str[10], shmid2str[10], shmid3str[10];
 int msgid1, msgid2, msgid3;
-int semid1, semid2, semid3, semid4;
+int psem, semid2, semid3, finalsem;
 int shmid1, shmid2, shmid3;
 
-SM1 *sm1;
-int *sm2;
-int *sm3;
+PageTable *SM1;
+int *SM2;
+int *SM3;
 
 void sighand(int signum)
 {
@@ -48,27 +48,25 @@ void sighand(int signum)
         kill(pidmmu, SIGINT);
 
         // detach and remove shared memory
-        shmdt(sm1);
+        shmdt(SM1);
         shmctl(shmid1, IPC_RMID, NULL);
 
-        shmdt(sm2);
+        shmdt(SM2);
         shmctl(shmid2, IPC_RMID, NULL);
 
-        shmdt(sm3);
+        shmdt(SM3);
         shmctl(shmid3, IPC_RMID, NULL);
 
         // remove semaphores
-        semctl(semid1, 0, IPC_RMID, 0);
+        semctl(psem, 0, IPC_RMID, 0);
         semctl(semid2, 0, IPC_RMID, 0);
         semctl(semid3, 0, IPC_RMID, 0);
-        semctl(semid4, 0, IPC_RMID, 0);
+        semctl(finalsem, 0, IPC_RMID, 0);
 
         // remove message queues
         msgctl(msgid1, IPC_RMID, NULL);
         msgctl(msgid2, IPC_RMID, NULL);
         msgctl(msgid3, IPC_RMID, NULL);
-
-        printf("CHECK 16\n");
         exit(1);
     }
 }
@@ -78,64 +76,56 @@ int main()
     signal(SIGINT, sighand);
     srand(time(0));
 
-    struct sembuf pop = {0, -1, 0};
-    struct sembuf vop = {0, 1, 0};
+    struct sembuf waitop = {0, -1, 0};
+    struct sembuf signalop = {0, 1, 0};
 
     int k, m, f;
-    printf("Enter the number of processes: ");
+    printf("Number of processes: ");
     scanf("%d", &k);
-    printf("Enter the Virtual Address Space size: ");
+    printf("Virtual Address Space size: ");
     scanf("%d", &m);
-    printf("Enter the Physical Address Space size: ");
+    printf("Physical Address Space size: ");
     scanf("%d", &f);
 
     // page table for k processes
     key_t key = ftok("master.c", 1);
-    int shmid1 = shmget(key, k * sizeof(SM1), IPC_CREAT | 0666);
-    sm1 = (SM1 *)shmat(shmid1, NULL, 0);
+    int shmid1 = shmget(key, k * sizeof(PageTable), IPC_CREAT | 0666);
+    SM1 = (PageTable *)shmat(shmid1, NULL, 0);
 
     for (int i = 0; i < k; i++)
     {
-        // page table for k processes
-
-        // sm1[i].pagetable = (int **)malloc(m * sizeof(int *));
-        // for (int j = 0; j < m; j++)
-        // {
-        //     sm1[i].pagetable[j] = (int *)malloc(3 * sizeof(int));
-        // }
-        sm1[i].totalpagefaults = 0;
-        sm1[i].totalillegalaccess = 0;
+        SM1[i].total_page_faults = 0;
+        SM1[i].total_illegal_access = 0;
     }
 
     // free frames list
     key = ftok("master.c", 20);
     int shmid2 = shmget(key, (f + 1) * sizeof(int), IPC_CREAT | 0666);
-    sm2 = (int *)shmat(shmid2, NULL, 0);
+    SM2 = (int *)shmat(shmid2, NULL, 0);
 
     // initialize the frames, 1 means free, 0 means occupied, -1 means end of list
     //doubt
     for (int i = 0; i < f; i++)
     {
-        sm2[i] = 1;
-        // printf("CHECK\n");
+        SM2[i] = 1;
     }
-    sm2[f] = -1;
+    SM2[f] = -1;
 
     // process to page mapping
     key = ftok("master.c", 3);
     int shmid3 = shmget(key, k * sizeof(int), IPC_CREAT | 0666);
-    sm3 = (int *)shmat(shmid3, NULL, 0);
+    SM3 = (int *)shmat(shmid3, NULL, 0);
 
     // initially no frames are allocated to any process
     for (int i = 0; i < k; i++)
     {
-        sm3[i] = 0;
+        SM3[i] = 0;
     }
 
     // semaphore 1 for Processes
     key = ftok("master.c", 4);
-    semid1 = semget(key, 1, IPC_CREAT | 0666);
-    semctl(semid1, 0, SETVAL, 0);
+    psem = semget(key, 1, IPC_CREAT | 0666);
+    semctl(psem, 0, SETVAL, 0);
 
     // semaphore 2 for Scheduler
     key = ftok("master.c", 5);
@@ -149,8 +139,8 @@ int main()
 
     // semaphore 4 for Master
     key = ftok("master.c", 7);
-    semid4 = semget(key, 1, IPC_CREAT | 0666);
-    semctl(semid4, 0, SETVAL, 0);
+    finalsem = semget(key, 1, IPC_CREAT | 0666);
+    semctl(finalsem, 0, SETVAL, 0);
 
     // Message Queue 1 for Ready Queue
     key = ftok("master.c", 8);
@@ -192,8 +182,10 @@ int main()
     if (pidmmu == 0)
     {
         printf("Memory Management Unit started\n");
-        // execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
-        execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+        execlp("xterm", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+        // execlp("nohup", "nohup", "xterm", "-T", "Memory Management Unit", "-e", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
+
+        // execlp("./mmu", "./mmu", msgid2str, msgid3str, shmid1str, shmid2str, NULL);
     }
 
     // int **refi = (int **)malloc((k) * sizeof(int *));
@@ -206,23 +198,23 @@ int main()
     for (int i = 0; i < k; i++)
     {
         // generate random number of pages between 1 to m
-        sm1[i].mi = rand() % m + 1;
-        sm1[i].fi = 0;
+        SM1[i].pages_req = rand() % m + 1;
+        SM1[i].frames_alloted = 0;
         for (int j = 0; j < m; j++)
         {
-            sm1[i].pagetable[j][0] = -1;      // no frame allocated
-            sm1[i].pagetable[j][1] = 0;       // invalid
-            sm1[i].pagetable[j][2] = INT_MAX; // timestamp
+            SM1[i].pagetable[j][0] = -1;      // no frame allocated
+            SM1[i].pagetable[j][1] = 0;       // invalid
+            SM1[i].pagetable[j][2] = INT_MAX; // timestamp
         }
 
         int y = 0;
-        int x = rand() % (8 * sm1[i].mi + 1) + 2 * sm1[i].mi;
+        int x = rand() % (8 * SM1[i].pages_req + 1) + 2 * SM1[i].pages_req;
 
 
         // refi[i] = (int *)malloc(x * sizeof(int));
         for (int j = 0; j < x; j++)
         {
-            refi[i][j] = rand() % sm1[i].mi;
+            refi[i][j] = rand() % SM1[i].pages_req;
             int temp = refi[i][j];
             while (temp > 0)
             {
@@ -236,7 +228,7 @@ int main()
         // with probability PROB, corrupt the reference string, by putting illegal page number
         for (int j = 0; j < x; j++)
         {
-            if ((double)rand() / RAND_MAX < PROB)
+            if ((double)rand() / RAND_MAX <= PROB)
             {
                 refi[i][j] = rand() % m;
             }
@@ -261,12 +253,13 @@ int main()
     // create Processes
     for (int i = 0; i < k; i++)
     {
-        printf("CHECK 113\n");
-        sleep(1);
+        // printf("CHECK 113\n");
+        usleep(250000);
+        // sleep(1);
         int pid = fork();
         if (pid != 0)
         {
-            sm1[i].pid = pid;
+            SM1[i].pid = pid;
         }
         else
         {
@@ -277,36 +270,40 @@ int main()
     // printf("CHECK 14\n");
 
     // wait for Scheduler to signal
-    P(semid4);
+    Wait(finalsem);
+    FILE * fp;
+    fp=fopen("result.txt","a+");
+    for(int i=0;i<k;i++){
+        printf("Process %d: pid-%d \ttotal_page_faults=%d \ttotal_illegal_pages=%d\n",i+1,SM1[i].pid,SM1[i].total_page_faults,SM1[i].total_illegal_access);
+        fprintf(fp,"Process %d: pid-%d \ttotal_page_faults=%d \ttotal_illegal_pages=%d\n",i+1,SM1[i].pid,SM1[i].total_page_faults,SM1[i].total_illegal_access);
+        fflush(fp);
+    }
 
-    printf("CHECK 15\n");
     // terminate Scheduler
     kill(pidscheduler, SIGINT);
-
+    // sleep(20);
     // terminate Memory Management Unit
     kill(pidmmu, SIGINT);
 
     // detach and remove shared memory
-    shmdt(sm1);
+    shmdt(SM1);
     shmctl(shmid1, IPC_RMID, NULL);
 
-    shmdt(sm2);
+    shmdt(SM2);
     shmctl(shmid2, IPC_RMID, NULL);
 
-    shmdt(sm3);
+    shmdt(SM3);
     shmctl(shmid3, IPC_RMID, NULL);
 
     // remove semaphores
-    semctl(semid1, 0, IPC_RMID, 0);
+    semctl(psem, 0, IPC_RMID, 0);
     semctl(semid2, 0, IPC_RMID, 0);
     semctl(semid3, 0, IPC_RMID, 0);
-    semctl(semid4, 0, IPC_RMID, 0);
+    semctl(finalsem, 0, IPC_RMID, 0);
 
     // remove message queues
     msgctl(msgid1, IPC_RMID, NULL);
     msgctl(msgid2, IPC_RMID, NULL);
     msgctl(msgid3, IPC_RMID, NULL);
-
-    printf("CHECK 16\n");
     return 0;
 }

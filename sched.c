@@ -8,84 +8,73 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
 #include <time.h>
+#include <signal.h>
 
-#define P(s) semop(s, &pop, 1)
-#define V(s) semop(s, &vop, 1)
+#define Signal(s) semop(s, &signalop, 1)
 
-typedef struct message1
+struct message_type_1
 {
     long type;
     int pid;
-} message1;
+} message_type_1;
 
-typedef struct message2
+struct message_type_2
 {
     long type;
+    int pageorframe;
     int pid;
-} message2;
+} message_type_2;
 
 int main(int argc, char *argv[])
 {
-    printf("SCHED CALLED\n");
-    struct sembuf pop = {0, -1, 0};
-    struct sembuf vop = {0, 1, 0};
+    // signal(SIGKILL,sighand);
+    printf("Scheduler Starting\n");
+    int num_process = atoi(argv[3]);
+    int msg1_shm = atoi(argv[1]);
+    int msg2_shm = atoi(argv[2]);
 
-    if (argc != 4)
-    {
-        printf("Usage: %s <Message Queue 1 ID> <Message Queue 2 ID> <# Processes>\n", argv[0]);
-        exit(1);
-    }
-
-    int msgid1 = atoi(argv[1]);
-    int msgid2 = atoi(argv[2]);
-    int k = atoi(argv[3]);
-
-    //doubt
     key_t key = ftok("master.c", 4);
-    int semid = semget(key, 1, IPC_CREAT | 0666);
+    int psem = semget(key, 1, IPC_CREAT | 0666);
 
-    key = ftok("master.c", 7);
-    int semid4 = semget(key, 1, IPC_CREAT | 0666);
 
     int pid = getpid();
 
-    message1 msg1;
-    message2 msg2;
-
-    while (k > 0)
+    struct message_type_1 message1, message2;
+    struct sembuf signalop = {0, 1, 0};
+    struct sembuf waitop = {0, -1, 0};
+    while (num_process > 0)
     {
-        printf("sched IS WAITING FOR MESSAGE\n");
-        // wait for processes to come
-        msgrcv(msgid1, (void *)&msg1, sizeof(message1), 0, 0);
 
-        printf("\t\tScheduling process %d\n", msg1.pid);
+        msgrcv(msg1_shm, (void *)&message1, sizeof(struct message_type_1), 0, 0);
 
-        // signal process to start
-        V(semid);
+        printf("\t\tScheduling process with pid:%d\n", message1.pid);
 
-        // wait for mmu
-        msgrcv(msgid2, (void *)&msg2, sizeof(message2), 0, 0);
 
-        // check the type of message
-        if (msg2.type == 2)
+        Signal(psem);
+
+        msgrcv(msg2_shm, (void *)&message2, sizeof(struct message_type_1), 0, 0);
+
+        if (message2.type == 1)
         {
-            printf("\t\tProcess %d terminated\n", msg2.pid);
-            k--;
+            printf("\t\tProcess (pid-%d )rescheduled to end of queue\n", message2.pid);
+            message1.pid = message2.pid;
+            message1.type = 1;
+            msgsnd(msg1_shm, (void *)&message1, sizeof(struct message_type_1), 0);
         }
-        else if (msg2.type == 1)
+        else if (message2.type == 2)
         {
-            printf("\t\tProcess %d added to end of queue\n", msg2.pid);
-            msg1.pid = msg2.pid;
-            msg1.type = 1;
-            msgsnd(msgid1, (void *)&msg1, sizeof(message1), 0);
+            printf("\t\tProcess (pid-%d) terminated\n", message2.pid);
+            num_process--;
         }
     }
 
-    printf("\t\tScheduler terminated\n");
+    printf("\t\tScheduler Succesfully Terminated\n");
 
-    // signal master on semid4
-    V(semid4);
+    key = ftok("master.c", 7);
+    int finalsem = semget(key, 1, IPC_CREAT | 0666);
+    Signal(finalsem);
 
     return 0;
 }

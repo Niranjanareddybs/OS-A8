@@ -10,208 +10,193 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
+#include <signal.h>
 
-#define P(s) semop(s, &pop, 1)
-#define V(s) semop(s, &vop, 1)
+void sighand(int signo){
+    if(signo==SIGKILL){
+    fprintf(stderr, "An error occurred: %s\n", "File not found");
+        sleep(10);
+    }
+}
 
-typedef struct SM1
+typedef struct PageTable
 {
     int pid;         // process id
-    int mi;          // number of required pages
-    int fi;          // number of frames allocated
-    // int **pagetable; // page table
-    int pagetable[100][3];
-    int totalpagefaults;
-    int totalillegalaccess;
-} SM1;
-typedef struct message2
+    int pages_req;          // number of required pages
+    int frames_alloted;          // number of frames allocated
+    int pagetable[200][3];
+    int total_page_faults;
+    int total_illegal_access;
+} PageTable;
+
+struct message_type_1
 {
     long type;
     int pid;
-} message2;
+} message_type_1;
 
-typedef struct message3
+struct message_type_2
 {
     long type;
     int pageorframe;
     int pid;
-} message3;
+} message_type_2;
 
 
+
+#define Wait(s) semop(s, &waitop, 1)
+#define Signal(s) semop(s, &signalop, 1)
 
 int main(int argc, char *argv[])
 {
-    printf("MMU CALLED\n");
+    signal(SIGKILL,sighand);
+    printf("Memory Management Unit Started");
+
+    FILE* fp;
+    fp=fopen("result.txt","a+");
+
+    int msg1_shm = atoi(argv[1]);
+    int msg2_shm = atoi(argv[2]);
+
+    struct message_type_1 message1;
+    struct message_type_2 message2;
+
+    int shm1 = atoi(argv[3]);
+    PageTable *SM1 = (PageTable *)shmat(shm1, NULL, 0);
+
+
+    int shm2 = atoi(argv[4]);
+    int *SM2 = (int *)shmat(shm2, NULL, 0);
+
+
+    struct sembuf waitop = {0, -1, 0};
+    struct sembuf signalop = {0, 1, 0};
+
+
     int timestamp = 0;
-
-    struct sembuf pop = {0, -1, 0};
-    struct sembuf vop = {0, 1, 0};
-    if (argc != 5)
-    {
-        printf("Usage: %s <Message Queue 2 ID> <Message Queue 3 ID> <Shared Memory 1 ID> <Shared Memory 2 ID>\n", argv[0]);
-        exit(1);
-    }
-
-    int msgid2 = atoi(argv[1]);
-    int msgid3 = atoi(argv[2]);
-    int shmid1 = atoi(argv[3]);
-    int shmid2 = atoi(argv[4]);
-
-    message2 msg2;
-    message3 msg3;
-
-    SM1 *sm1 = (SM1 *)shmat(shmid1, NULL, 0);
-    int *sm2 = (int *)shmat(shmid2, NULL, 0);
-
     while (1)
     {
-        printf("\t\tMMU IS WAITING FOR MESSAGE\n");
-        // wait for process to come
-        msgrcv(msgid3, (void *)&msg3, sizeof(message3), 0, 0);
         timestamp++;
+        msgrcv(msg2_shm, (void *)&message2, sizeof(message_type_2), 0, 0);
 
-
-        // sleep(10);        
-        // check if the requested page is in the page table of the process with that pid
         int i = 0;
-        while (sm1[i].pid != msg3.pid)
+        while (1)
         {
+            if(SM1[i].pid==message2.pid){   
+                break;
+            }
             i++;
         }
-        printf("\t\ti = %d , Global Ordering - (Timestamp %d, Process %d, Page %d)\n",i, timestamp, msg3.pid, msg3.pageorframe);
-
-        int page = msg3.pageorframe;
-
-        // printf("page -> %d\n",page);
-        // printf("1-> %d\n",sm1[i].pagetable[page][0]);
-        // printf("2-> %d\n",sm1[i].pagetable[page][1]);
-        // printf("3-> %d\n",sm1[i].mi);
-        // printf("4->\n");
+        printf("Global Ordering(pid-%d) - (Timestamp %d, Process %d, Page %d)\n",SM1[i].pid, timestamp, i+1, message2.pageorframe);
+        fprintf(fp,"Global Ordering(pid-%d) - (Timestamp %d, Process %d, Page %d)\n",SM1[i].pid, timestamp, i+1, message2.pageorframe);
+        fflush(fp);
+        int page = message2.pageorframe;
         
         if (page == -9)
         {
-            // process is done
-            // free the frames
-            printf("hi1\n");
-            for (int j = 0; j < sm1[i].mi; j++)
+            for (int j = 0; j < SM1[i].pages_req; j++)
             {
-                if (sm1[i].pagetable[j][0] != -1)
+                if (SM1[i].pagetable[j][0] != -1)
                 {
-                    sm2[sm1[i].pagetable[j][0]] = 1;
-                    sm1[i].pagetable[j][0] = -1;
-                    sm1[i].pagetable[j][1] = 0;
-                    sm1[i].pagetable[j][2] = INT_MAX;
+                    SM2[SM1[i].pagetable[j][0]] = 1;
+                    SM1[i].pagetable[j][2] = INT_MAX;
+                    SM1[i].pagetable[j][0] = -1;
+                    SM1[i].pagetable[j][1] = 0;
                 }
             }
-            msg2.type = 2;
-            msg2.pid = msg3.pid;
-            printf("message send 1\n");
-            msgsnd(msgid2, (void *)&msg2, sizeof(message2), 0);
+            message1.pid = message2.pid;
+            message1.type = 2;
+            msgsnd(msg1_shm, (void *)&message1, sizeof(message_type_1), 0);
 
         }
-        else if (sm1[i].pagetable[page][0] != -1 && sm1[i].pagetable[page][1] == 1)
+        else if (SM1[i].pagetable[page][1] == 1 && SM1[i].pagetable[page][0] != -1)
         {
-            // page there in memory and valid, return frame number
-            printf("hi2\n");
-            sm1[i].pagetable[page][2] = timestamp;
-            msg3.pageorframe = sm1[i].pagetable[page][0];
-            msgsnd(msgid3, (void *)&msg3, sizeof(message3), 0);
-            printf("message send 2\n");
+            message2.pageorframe = SM1[i].pagetable[page][0];
+            SM1[i].pagetable[page][2] = timestamp;
+            msgsnd(msg2_shm, (void *)&message2, sizeof(message_type_2), 0);
         }
-        else if (page >= sm1[i].mi)
+        else if (page >= SM1[i].pages_req)
         {
-            // illegal page number
-            // ask process to kill themselves
-            printf("hi3\n");
-            msg3.pageorframe = -2;
-            msgsnd(msgid3, (void *)&msg3, sizeof(message3), 0);
+            message2.pageorframe = -2;
+            msgsnd(msg2_shm, (void *)&message2, sizeof(message_type_2), 0);
 
-            // update total illegal access
-            sm1[i].totalillegalaccess++;
+            SM1[i].total_illegal_access++;
 
-            printf("Invalid Page Reference - (Process %d, Page %d)\n", i + 1, page);
+            printf("\t\tInvalid Page Reference(pid-%d) - (Process %d, Page %d)\n",SM1[i].pid, i + 1, page);
+            fprintf(fp,"\t\tInvalid Page Reference(pid-%d) - (Process %d, Page %d)\n",SM1[i].pid, i + 1, page);
+            fflush(fp);
 
-            // free the frames
-            for (int j = 0; j < sm1[i].mi; j++)
+            for (int j = 0; j < SM1[i].pages_req; j++)
             {
-                if (sm1[i].pagetable[j][0] != -1)
+                if (SM1[i].pagetable[j][0] != -1)
                 {
-                    sm2[sm1[i].pagetable[j][0]] = 1;
-                    sm1[i].pagetable[j][0] = -1;
-                    sm1[i].pagetable[j][1] = 0;
-                    sm1[i].pagetable[j][2] = INT_MAX;
+                    SM2[SM1[i].pagetable[j][0]] = 1;
+                    SM1[i].pagetable[j][2] = INT_MAX;
+                    SM1[i].pagetable[j][0] = -1;
+                    SM1[i].pagetable[j][1] = 0;
                 }
             }
-            msg2.type = 2;
-            msg2.pid = msg3.pid;
-            msgsnd(msgid2, (void *)&msg2, sizeof(message2), 0);
-            printf("message send 3\n");
+            message1.pid = message2.pid;
+            message1.type = 2;
+            msgsnd(msg1_shm, (void *)&message1, sizeof(message_type_1), 0);
         }
         else
         {
-            // page fault
-            // ask process to wait
-            printf("hi4\n");
-            msg3.pageorframe = -1;
-            msgsnd(msgid3, (void *)&msg3, sizeof(message3), 0);
-
-            printf("message 1\n");
-            printf("Page fault sequence - (Process %d, Page %d)\n", i + 1, page);
-
-            // Page Fault Handler (PFH)
-            // check if there is a free frame in sm2
+            message2.pageorframe = -1;
+            msgsnd(msg2_shm, (void *)&message2, sizeof(message_type_2), 0);
+            SM1[i].total_page_faults++;
+            printf("\t\t\t\tPage fault sequence(pid-%d)- (Process %d, Page %d)\n", SM1[i].pid,+ + 1, page);
+            fprintf(fp,"\t\t\t\tPage fault sequence(pid-%d)- (Process %d, Page %d)\n", SM1[i].pid,i + 1, page);
+            fflush(fp);
             int j = 0;
-            while (sm2[j] != -1)
+            while (1)
             {
-                if (sm2[j] == 1)
+                if(SM2[j]==-1){
+                    break;
+                }
+                else if (SM2[j] == 1)
                 {
-                    sm2[j] = 0;
+                    SM2[j] = 0;
                     break;
                 }
                 j++;
             }
 
-            if (sm2[j] == -1)
+            if (SM2[j] != -1)
             {
-                // no free frame
-                // find the page with the least timestamp
-            printf("hi1\n");
-                int min = INT_MAX;
-                int minpage = -1;
-                for (int k = 0; k < sm1[i].mi; k++)
-                {
-                    if (sm1[i].pagetable[k][2] < min)
-                    {
-                        min = sm1[i].pagetable[k][2];
-                        minpage = k;
-                    }
-                }
-
+                SM1[i].pagetable[page][2] = timestamp;
+                SM1[i].pagetable[page][0] = j;
+                SM1[i].pagetable[page][1] = 1;
+                message1.pid = message2.pid;
+                message1.type = 1;
+                msgsnd(msg1_shm, (void *)&message1, sizeof(message_type_1), 0);
                 
-                sm1[i].pagetable[minpage][1] = 0;
-                sm1[i].pagetable[page][0] = sm1[i].pagetable[minpage][0];
-                sm1[i].pagetable[page][1] = 1;
-                sm1[i].pagetable[page][2] = timestamp;
-                sm1[i].pagetable[minpage][2] = INT_MAX;
-
-
-                msg2.type = 1;
-                msg2.pid = msg3.pid;
-                msgsnd(msgid2, (void *)&msg2, sizeof(message2), 0);
-                printf("message snd 4\n");
             }
 
             else
             {
-                // free frame found
-                sm1[i].pagetable[page][0] = j;
-                sm1[i].pagetable[page][1] = 1;
-                sm1[i].pagetable[page][2] = timestamp;
+                int page_replaced = -1;
+                int minimum = INT_MAX;
+                for (int replace = 0; replace < SM1[i].pages_req; replace++)
+                {
+                    if (SM1[i].pagetable[replace][2] < minimum)
+                    {
+                        minimum = SM1[i].pagetable[replace][2];
+                        page_replaced = replace;
+                    }
+                }
 
-                msg2.type = 1;
-                msg2.pid = msg3.pid;
-                msgsnd(msgid2, (void *)&msg2, sizeof(message2), 0);
-                printf("message ssend 5\n");
+                
+                SM1[i].pagetable[page_replaced][1] = 0;
+                SM1[i].pagetable[page][0] = SM1[i].pagetable[page_replaced][0];
+                SM1[i].pagetable[page][1] = 1;
+                SM1[i].pagetable[page][2] = timestamp;
+                SM1[i].pagetable[page_replaced][2] = INT_MAX;
+
+
+                message1.type = 1;
+                message1.pid = message2.pid;
+                msgsnd(msg1_shm, (void *)&message1, sizeof(message_type_1), 0);
             }
         }
     }
