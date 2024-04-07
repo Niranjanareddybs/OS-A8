@@ -23,7 +23,7 @@ struct Message
 int main(int argc, char *argv[])
 {
     printf("\033[1;31m");
-    printf("\nScheduler Starting\n");
+    printf("\nSCHED: Scheduler Starting\n");
     printf("\033[0m");
 
     int num_process = atoi(argv[3]);
@@ -32,6 +32,9 @@ int main(int argc, char *argv[])
 
     key_t key = ftok("master.c", 4);
     int psem = semget(key, 1, IPC_CREAT | 0666);
+
+    key = ftok("master.c", 7);
+    int finalsem = semget(key, 1, IPC_CREAT | 0666);
 
     int pid = getpid();
 
@@ -44,7 +47,7 @@ int main(int argc, char *argv[])
     {
 
         msgrcv(msg1_shm, (void *)&message1, sizeof(struct Message), 0, 0);
-        printf("\033[1;32m Scheduling process with pid:%d\n\033[0m", message1.pid);
+        printf("\033[1;32mSCHED: Scheduling process with pid:%d\n\033[0m", message1.pid);
 
         Signal(psem);
 
@@ -53,7 +56,7 @@ int main(int argc, char *argv[])
         if (message2.type == 1)
         {
             printf("\033[1;32m");
-            printf("Process (pid-%d )rescheduled to end of queue\n", message2.pid);
+            printf("SCHED: Process (pid-%d )rescheduled to end of queue\n", message2.pid);
             printf("\033[0m");
 
             message1.pid = message2.pid;
@@ -63,17 +66,15 @@ int main(int argc, char *argv[])
         else if (message2.type == 2)
         {
             printf("\033[1;32m");
-            printf("\nProcess (pid-%d) terminated\n", message2.pid);
+            printf("\nSCHED: Process (pid-%d) terminated\n", message2.pid);
             printf("\033[0m");
             num_process--;
         }
     }
     printf("\033[1;31m");
-    printf("Scheduler Succesfully Terminated\n");
+    printf("SCHED: Scheduler Succesfully Terminated\n");
     printf("\033[0m");
 
-    key = ftok("master.c", 7);
-    int finalsem = semget(key, 1, IPC_CREAT | 0666);
     Signal(finalsem);
 
     return 0;
